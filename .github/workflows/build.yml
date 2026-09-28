@@ -33,15 +33,17 @@ jobs:
           -storepass android -keypass android \
           -dname "CN=Android Debug,O=Android,C=US"
         
-        # 签名 APK
-        $ANDROID_HOME/build-tools/*/apksigner sign --ks debug.keystore \
-          --ks-key-alias androiddebugkey --ks-pass pass:android \
-          --key-pass pass:android \
-          app/build/outputs/apk/release/app-release-unsigned.apk
+        # 找到生成的 APK
+        APK_FILE=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
+        echo "Found APK: $APK_FILE"
+        
+        # 使用 jarsigner 签名（Java 自带工具）
+        jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+          -keystore debug.keystore -storepass android -keypass android \
+          "$APK_FILE" androiddebugkey
         
         # 验证签名
-        $ANDROID_HOME/build-tools/*/apksigner verify \
-          app/build/outputs/apk/release/app-release-unsigned.apk
+        jarsigner -verify -verbose "$APK_FILE"
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
