@@ -260,4 +260,3 @@ public class MainHook implements IXposedHookLoadPackage {
         }
     }
 }
-// Version: 1.0.1 - 修复签名问题

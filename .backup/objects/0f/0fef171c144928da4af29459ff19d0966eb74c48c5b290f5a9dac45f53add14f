@@ -148,77 +148,46 @@ public class MainHook implements IXposedHookLoadPackage {
 
                 // 处理每个宝箱
                 for (int i = 0; i < boxes.length(); i++) {
-                    try {
-                        JSONObject box = boxes.getJSONObject(i);
-                        String boxId = box.optString("boxId");
-                        String status = box.optString("status");
+                    JSONObject box = boxes.getJSONObject(i);
+                    String boxId = box.optString("boxId");
+                    String status = box.optString("status");
 
-                        if (boxId == null || boxId.isEmpty()) {
-                            Log.w(TAG, "宝箱 ID 为空，跳过");
-                            continue;
-                        }
-
-                        if (!"AVAILABLE".equals(status)) {
-                            Log.i(TAG, "宝箱 " + boxId + " 状态为 " + status + "，跳过");
-                            continue;
-                        }
-
-                        Log.i(TAG, "处理宝箱: " + boxId);
-
-                        // 2. 进入小游戏
-                        String enterResult = callRpc(rpcService,
-                            "alipay.charity.mobile.game.center.h5.enter",
-                            "{\"boxId\":\"" + boxId + "\",\"gameType\":\"antForest\"}");
-                        Log.i(TAG, "进入小游戏: " + enterResult);
-
-                        if (enterResult == null || !enterResult.contains("\"success\":true")) {
-                            Log.e(TAG, "进入小游戏失败，跳过宝箱 " + boxId);
-                            continue;
-                        }
-
-                        Thread.sleep(1000);
-
-                        // 3. 上报游戏进度（关键步骤！）
-                        String reportResult = callRpc(rpcService,
-                            "alipay.charity.mobile.game.center.h5.report",
-                            "{\"boxId\":\"" + boxId + "\",\"progress\":100,\"gameType\":\"antForest\"}");
-                        Log.i(TAG, "上报游戏进度: " + reportResult);
-
-                        if (reportResult == null || !reportResult.contains("\"success\":true")) {
-                            Log.e(TAG, "上报游戏进度失败，跳过宝箱 " + boxId);
-                            continue;
-                        }
-
-                        Thread.sleep(500);
-
-                        // 4. 开启宝箱
-                        String openResult = callRpc(rpcService,
-                            "alipay.charity.mobile.game.center.h5.open",
-                            "{\"boxId\":\"" + boxId + "\",\"gameType\":\"antForest\"}");
-                        Log.i(TAG, "开启宝箱结果: " + openResult);
-
-                        if (openResult != null && openResult.contains("\"success\":true")) {
-                            JSONObject openJson = new JSONObject(openResult);
-                            
-                            // 尝试多种可能的能量字段位置
-                            int energy = 0;
-                            energy = openJson.optInt("energy", 0);
-                            if (energy == 0) {
-                                JSONObject data = openJson.optJSONObject("data");
-                                if (data != null) {
-                                    energy = data.optInt("energy", 0);
-                                }
-                            }
-                            
-                            Log.i(TAG, "✅ 宝箱 " + boxId + " 开启成功，获得能量: " + energy + "g");
-                        } else {
-                            Log.e(TAG, "❌ 宝箱 " + boxId + " 开启失败");
-                        }
-
-                        Thread.sleep(1000);
-                    } catch (Exception e) {
-                        Log.e(TAG, "处理单个宝箱时出错", e);
+                    if (!"AVAILABLE".equals(status)) {
+                        Log.i(TAG, "宝箱 " + boxId + " 状态为 " + status + "，跳过");
+                        continue;
                     }
+
+                    Log.i(TAG, "处理宝箱: " + boxId);
+
+                    // 2. 进入小游戏
+                    String enterResult = callRpc(rpcService,
+                        "alipay.charity.mobile.game.center.h5.enter",
+                        "{\"boxId\":\"" + boxId + "\",\"gameType\":\"antForest\"}");
+                    Log.i(TAG, "进入小游戏: " + enterResult);
+
+                    Thread.sleep(1000);
+
+                    // 3. 上报游戏进度（关键步骤！）
+                    String reportResult = callRpc(rpcService,
+                        "alipay.charity.mobile.game.center.h5.report",
+                        "{\"boxId\":\"" + boxId + "\",\"progress\":100,\"gameType\":\"antForest\"}");
+                    Log.i(TAG, "上报游戏进度: " + reportResult);
+
+                    Thread.sleep(500);
+
+                    // 4. 开启宝箱
+                    String openResult = callRpc(rpcService,
+                        "alipay.charity.mobile.game.center.h5.open",
+                        "{\"boxId\":\"" + boxId + "\",\"gameType\":\"antForest\"}");
+                    Log.i(TAG, "开启宝箱结果: " + openResult);
+
+                    if (openResult != null && openResult.contains("\"success\":true")) {
+                        JSONObject openJson = new JSONObject(openResult);
+                        int energy = openJson.optInt("energy", 0);
+                        Log.i(TAG, "✅ 宝箱 " + boxId + " 开启成功，获得能量: " + energy + "g");
+                    }
+
+                    Thread.sleep(1000);
                 }
 
                 Log.i(TAG, "所有宝箱处理完成");
@@ -260,4 +229,3 @@ public class MainHook implements IXposedHookLoadPackage {
         }
     }
 }
-// Version: 1.0.1 - 修复签名问题
