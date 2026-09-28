@@ -25,6 +25,13 @@ jobs:
     - name: Build with Gradle
       run: ./gradlew assembleRelease
 
+    - name: List build outputs
+      run: |
+        echo "=== Build outputs directory structure ==="
+        ls -lR app/build/outputs/
+        echo "=== APK files ==="
+        find app/build/outputs -name "*.apk" -exec ls -lh {} \;
+
     - name: Sign APK
       run: |
         # 生成调试密钥
