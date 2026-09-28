@@ -37,29 +37,37 @@ public class MainHook implements IXposedHookLoadPackage {
                 lpparam.classLoader
             );
 
-            XposedHelpers.findAndHookMethod(rpcClass, "rpcCall",
-                String.class, String.class, String.class, boolean.class,
-                new XC_MethodHook() {
-                    @Override
-                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                        String operationType = (String) param.args[0];
-                        String requestData = (String) param.args[1];
-                        
-                        // 保存 RPC 服务实例
-                        if (rpcServiceInstance == null) {
-                            rpcServiceInstance = param.thisObject;
-                            Log.i(TAG, "已保存 RPC 服务实例");
-                        }
+            XposedHelpers.hookAllMethods(rpcClass, "rpcCall", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                    if (rpcServiceInstance == null) {
+                        rpcServiceInstance = param.thisObject;
+                        Log.i(TAG, "已保存 RPC 服务实例，参数数量=" + param.args.length);
+                    }
 
-                        // 检测到森林乐园的签到/领奖请求
-                        if (operationType != null && operationType.contains("gamecenteruprod")) {
-                            Log.i(TAG, "检测到 gamecenteruprod 请求: " + operationType);
-                            
-                            // 在原请求完成后，补充调用 charitygamecenter 宝箱逻辑
-                            handleCharityGameCenter(param);
+                    String operationType = null;
+                    String requestData = null;
+                    for (Object arg : param.args) {
+                        if (arg instanceof String) {
+                            String value = (String) arg;
+                            if (operationType == null && (value.contains("gamecenter") || value.contains("charity"))) {
+                                operationType = value;
+                            } else if (requestData == null && value.startsWith("{")) {
+                                requestData = value;
+                            }
                         }
                     }
-                });
+
+                    if (operationType != null) {
+                        Log.i(TAG, "RPC 检测到森林相关参数: " + operationType);
+                    }
+
+                    if (operationType != null && operationType.contains("gamecenteruprod")) {
+                        Log.i(TAG, "检测到 gamecenteruprod 请求，开始宝箱流程");
+                        handleCharityGameCenter(param);
+                    }
+                }
+            });
 
             Log.i(TAG, "RPC Hook 安装成功");
         } catch (Throwable e) {
