@@ -1,0 +1,195 @@
+package com.forest.gamecenter.fix;
+
+import android.util.Log;
+import de.robv.android.xposed.IXposedHookLoadPackage;
+import de.robv.android.xposed.XC_MethodHook;
+import de.robv.android.xposed.XposedHelpers;
+import de.robv.android.xposed.callbacks.XC_LoadPackage;
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+public class MainHook implements IXposedHookLoadPackage {
+    private static final String TAG = "ForestGameCenterFix";
+    private static final String ALIPAY_PACKAGE = "com.eg.android.AlipayGphone";
+
+    @Override
+    public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
+        if (!lpparam.packageName.equals(ALIPAY_PACKAGE)) {
+            return;
+        }
+
+        Log.i(TAG, "森林乐园修复模块已加载");
+
+        try {
+            // Hook RPC 请求方法
+            hookRpcCall(lpparam);
+        } catch (Throwable e) {
+            Log.e(TAG, "Hook 失败", e);
+        }
+    }
+
+    private void hookRpcCall(XC_LoadPackage.LoadPackageParam lpparam) {
+        // Hook 支付宝的 RPC 调用类，拦截 gamecenteruprod 请求并补充 charitygamecenter 调用
+        try {
+            Class<?> rpcClass = XposedHelpers.findClass(
+                "com.alipay.mobile.framework.service.common.RpcService", 
+                lpparam.classLoader
+            );
+
+            XposedHelpers.findAndHookMethod(rpcClass, "rpcCall",
+                String.class, String.class, String.class, boolean.class,
+                new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                        String operationType = (String) param.args[0];
+                        String requestData = (String) param.args[1];
+
+                        // 检测到森林乐园的签到/领奖请求
+                        if (operationType != null && operationType.contains("gamecenteruprod")) {
+                            Log.i(TAG, "检测到 gamecenteruprod 请求: " + operationType);
+                            
+                            // 在原请求完成后，补充调用 charitygamecenter 宝箱逻辑
+                            handleCharityGameCenter(param);
+                        }
+                    }
+                });
+
+            Log.i(TAG, "RPC Hook 安装成功");
+        } catch (Throwable e) {
+            Log.e(TAG, "RPC Hook 安装失败，尝试其他方法", e);
+            hookAlternativeMethod(lpparam);
+        }
+    }
+
+    private void hookAlternativeMethod(XC_LoadPackage.LoadPackageParam lpparam) {
+        // 备用方案：Hook 网络请求
+        try {
+            Class<?> httpClass = XposedHelpers.findClass(
+                "com.alipay.mobile.common.transport.http.HttpManager",
+                lpparam.classLoader
+            );
+
+            XposedHelpers.findAndHookMethod(httpClass, "request",
+                String.class, String.class, Object.class,
+                new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                        String url = (String) param.args[0];
+                        if (url != null && url.contains("gamecenteruprod")) {
+                            Log.i(TAG, "通过 HTTP Hook 检测到森林乐园请求");
+                            handleCharityGameCenter(param);
+                        }
+                    }
+                });
+
+            Log.i(TAG, "HTTP Hook 安装成功");
+        } catch (Throwable e) {
+            Log.e(TAG, "备用 Hook 也失败", e);
+        }
+    }
+
+    private void handleCharityGameCenter(XC_MethodHook.MethodHookParam param) {
+        new Thread(() -> {
+            try {
+                Log.i(TAG, "开始处理 charitygamecenter 宝箱逻辑");
+                
+                // 获取 RPC 服务实例
+                Object rpcService = getRpcService(param);
+                if (rpcService == null) {
+                    Log.e(TAG, "无法获取 RPC 服务");
+                    return;
+                }
+
+                // 1. 查询宝箱列表
+                String queryResult = callRpc(rpcService, 
+                    "alipay.charity.mobile.game.center.h5.query",
+                    "{\"gameType\":\"antForest\"}");
+                Log.i(TAG, "查询宝箱列表: " + queryResult);
+
+                if (queryResult == null || !queryResult.contains("\"success\":true")) {
+                    Log.e(TAG, "查询宝箱列表失败");
+                    return;
+                }
+
+                // 解析宝箱列表
+                JSONObject queryJson = new JSONObject(queryResult);
+                JSONArray boxes = queryJson.optJSONArray("treasureBoxList");
+                
+                if (boxes == null || boxes.length() == 0) {
+                    Log.i(TAG, "没有可领取的宝箱");
+                    return;
+                }
+
+                // 处理每个宝箱
+                for (int i = 0; i < boxes.length(); i++) {
+                    JSONObject box = boxes.getJSONObject(i);
+                    String boxId = box.optString("boxId");
+                    String status = box.optString("status");
+
+                    if (!"AVAILABLE".equals(status)) {
+                        Log.i(TAG, "宝箱 " + boxId + " 状态为 " + status + "，跳过");
+                        continue;
+                    }
+
+                    Log.i(TAG, "处理宝箱: " + boxId);
+
+                    // 2. 进入小游戏
+                    String enterResult = callRpc(rpcService,
+                        "alipay.charity.mobile.game.center.h5.enter",
+                        "{\"boxId\":\"" + boxId + "\",\"gameType\":\"antForest\"}");
+                    Log.i(TAG, "进入小游戏: " + enterResult);
+
+                    Thread.sleep(1000);
+
+                    // 3. 上报游戏进度（关键步骤！）
+                    String reportResult = callRpc(rpcService,
+                        "alipay.charity.mobile.game.center.h5.report",
+                        "{\"boxId\":\"" + boxId + "\",\"progress\":100,\"gameType\":\"antForest\"}");
+                    Log.i(TAG, "上报游戏进度: " + reportResult);
+
+                    Thread.sleep(500);
+
+                    // 4. 开启宝箱
+                    String openResult = callRpc(rpcService,
+                        "alipay.charity.mobile.game.center.h5.open",
+                        "{\"boxId\":\"" + boxId + "\",\"gameType\":\"antForest\"}");
+                    Log.i(TAG, "开启宝箱结果: " + openResult);
+
+                    if (openResult != null && openResult.contains("\"success\":true")) {
+                        JSONObject openJson = new JSONObject(openResult);
+                        int energy = openJson.optInt("energy", 0);
+                        Log.i(TAG, "✅ 宝箱 " + boxId + " 开启成功，获得能量: " + energy + "g");
+                    }
+
+                    Thread.sleep(1000);
+                }
+
+                Log.i(TAG, "所有宝箱处理完成");
+
+            } catch (Exception e) {
+                Log.e(TAG, "处理宝箱失败", e);
+            }
+        }).start();
+    }
+
+    private Object getRpcService(XC_MethodHook.MethodHookParam param) {
+        try {
+            // 尝试从 Hook 参数中获取 RPC 服务实例
+            return param.thisObject;
+        } catch (Exception e) {
+            Log.e(TAG, "获取 RPC 服务失败", e);
+            return null;
+        }
+    }
+
+    private String callRpc(Object rpcService, String operationType, String requestData) {
+        try {
+            Object result = XposedHelpers.callMethod(rpcService, "rpcCall",
+                operationType, requestData, "", true);
+            return result != null ? result.toString() : null;
+        } catch (Throwable e) {
+            Log.e(TAG, "RPC 调用失败: " + operationType, e);
+            return null;
+        }
+    }
+}
