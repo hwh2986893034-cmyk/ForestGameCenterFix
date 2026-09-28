@@ -24,7 +24,25 @@ jobs:
     
     - name: Build with Gradle
       run: ./gradlew assembleRelease
-    
+
+    - name: Sign APK
+      run: |
+        # 生成调试密钥
+        keytool -genkey -v -keystore debug.keystore -alias androiddebugkey \
+          -keyalg RSA -keysize 2048 -validity 10000 \
+          -storepass android -keypass android \
+          -dname "CN=Android Debug,O=Android,C=US"
+        
+        # 签名 APK
+        $ANDROID_HOME/build-tools/*/apksigner sign --ks debug.keystore \
+          --ks-key-alias androiddebugkey --ks-pass pass:android \
+          --key-pass pass:android \
+          app/build/outputs/apk/release/app-release-unsigned.apk
+        
+        # 验证签名
+        $ANDROID_HOME/build-tools/*/apksigner verify \
+          app/build/outputs/apk/release/app-release-unsigned.apk
+
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
